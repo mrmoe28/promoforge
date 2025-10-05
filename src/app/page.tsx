@@ -28,13 +28,14 @@ export default function Home() {
   const [audioSettings, setAudioSettings] = useState<AudioSettings>({
     enableVoiceover: false,
     voiceoverScript: '',
-    selectedVoice: 'Joanna', // Shotstack TTS voice (female, en-US)
+    selectedVoice: '21m00Tcm4TlvDq8ikWAM', // ElevenLabs Rachel voice ID
     voiceoverVolume: 80,
     enableMusic: false,
     selectedMusic: 'upbeat-1',
     musicVolume: 30,
     customMusicUrl: undefined,
-    customMusicName: undefined
+    customMusicName: undefined,
+    ttsProvider: 'elevenlabs' // Default to ElevenLabs for better quality
   })
 
   const form = useForm<UrlInput>({
@@ -161,24 +162,65 @@ export default function Home() {
 
       // Add voiceover track if enabled
       if (audioSettings.enableVoiceover && audioSettings.voiceoverScript.trim()) {
-        console.log('Adding voiceover using Shotstack TTS...')
+        console.log('Adding voiceover...')
+        console.log('TTS Provider:', audioSettings.ttsProvider)
         console.log('Voiceover text:', audioSettings.voiceoverScript)
         console.log('Selected voice:', audioSettings.selectedVoice)
         
-        // Use Shotstack's built-in text-to-speech (no external API needed!)
-        tracks.push({
-          clips: [{
-            asset: {
-              type: 'text-to-speech',
-              text: audioSettings.voiceoverScript,
-              voice: audioSettings.selectedVoice,
-              language: 'en-US'
-            },
-            start: 0,
-            length: videoDuration,
-            volume: audioSettings.voiceoverVolume / 100
-          }]
-        })
+        if (audioSettings.ttsProvider === 'elevenlabs') {
+          console.log('Using ElevenLabs TTS...')
+          // Generate audio with ElevenLabs first
+          try {
+            const audioResponse = await fetch('/api/generate-audio', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                text: audioSettings.voiceoverScript,
+                voiceId: audioSettings.selectedVoice,
+              }),
+            })
+
+            const audioData = await audioResponse.json()
+            if (audioData.ok && audioData.audioUrl) {
+              console.log('ElevenLabs audio generated:', audioData.audioUrl)
+              // Use the generated audio as external audio source
+              // NOTE: For audio clips, 'length' should be omitted to use full audio duration
+              tracks.push({
+                clips: [{
+                  asset: {
+                    type: 'audio',
+                    src: audioData.audioUrl,
+                    volume: audioSettings.voiceoverVolume / 100
+                  },
+                  start: 0
+                }]
+              })
+            } else {
+              throw new Error(audioData.error || 'Failed to generate ElevenLabs audio')
+            }
+          } catch (error) {
+            console.error('ElevenLabs TTS error:', error)
+            alert(`Voiceover generation failed: ${error instanceof Error ? error.message : 'Unknown error'}`)
+            setIsGenerating(false)
+            return
+          }
+        } else {
+          // Use Shotstack's built-in text-to-speech
+          console.log('Using Shotstack TTS...')
+          tracks.push({
+            clips: [{
+              asset: {
+                type: 'text-to-speech',
+                text: audioSettings.voiceoverScript,
+                voice: audioSettings.selectedVoice
+                // NOTE: language parameter is not supported in Edit API TTS
+              },
+              start: 0,
+              length: 'auto', // CRITICAL: 'auto' for TTS to match audio duration
+              volume: audioSettings.voiceoverVolume / 100
+            }]
+          })
+        }
       }
 
       // Add background music track if enabled
@@ -198,15 +240,16 @@ export default function Home() {
 
         if (musicUrl) {
           console.log('Music URL:', musicUrl)
+          // Background music: trim to video duration
           tracks.push({
             clips: [{
               asset: {
                 type: 'audio',
-                src: musicUrl
+                src: musicUrl,
+                volume: audioSettings.musicVolume / 100
               },
               start: 0,
-              length: videoDuration,
-              volume: audioSettings.musicVolume / 100
+              length: videoDuration // OK to trim music to video length
             }]
           })
         } else {
@@ -234,6 +277,26 @@ export default function Home() {
       // Log the payload for debugging
       console.log('Sending payload to Shotstack:', JSON.stringify(payload, null, 2))
 
+      // Validate payload before sending
+      console.log('Payload validation:', {
+        totalTracks: payload.timeline.tracks.length,
+        trackDetails: payload.timeline.tracks.map((track, idx) => ({
+          trackIndex: idx,
+          clipCount: track.clips.length,
+          clips: track.clips.map((clip) => {
+            const c = clip as { asset: { type: string; src?: string }; volume?: number; start: number; length?: number | string }
+            return {
+              assetType: c.asset.type,
+              hasVolume: 'volume' in c,
+              volume: c.volume,
+              start: c.start,
+              length: c.length,
+              src: 'src' in c.asset ? c.asset.src : undefined
+            }
+          })
+        }))
+      })
+
       const response = await fetch('/api/render', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -241,6 +304,9 @@ export default function Home() {
       })
 
       const data = await response.json()
+
+      // Log the response for debugging
+      console.log('Shotstack response:', data)
 
       if (data.ok && data.shotstack?.response?.id) {
         const id = data.shotstack.response.id

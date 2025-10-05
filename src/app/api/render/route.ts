@@ -17,22 +17,30 @@ const VALID_VOICES = [
 ]
 
 interface TTSAsset {
-  type: string
-  text?: string
+  type: 'text-to-speech'
+  text: string
   voice?: string
   language?: string
 }
 
 interface AudioAsset {
-  type: string
-  src?: string
+  type: 'audio'
+  src: string
+  volume?: number
+}
+
+interface ImageAsset {
+  type: 'image'
+  src: string
 }
 
 interface Clip {
-  asset: TTSAsset | AudioAsset | { type: string; src?: string }
+  asset: TTSAsset | AudioAsset | ImageAsset
   start: number
-  length: number
+  length?: number | 'auto'  // Optional: omit for audio, use 'auto' for TTS
   volume?: number
+  fit?: string
+  effect?: string
 }
 
 interface Track {
@@ -67,6 +75,18 @@ export async function POST(request: NextRequest) {
     }
 
     const body: RenderPayload = await request.json()
+
+    // Log the incoming request for debugging
+    console.log('📥 Received render request:', {
+      trackCount: body.timeline?.tracks?.length || 0,
+      background: body.timeline?.background,
+      output: body.output,
+      tracks: body.timeline?.tracks?.map((track, idx) => ({
+        trackIndex: idx,
+        clipCount: track.clips.length,
+        firstClipType: track.clips[0]?.asset?.type
+      }))
+    })
 
     // Validate audio clips (both TTS and external audio)
     if (body.timeline?.tracks) {
@@ -146,6 +166,31 @@ export async function POST(request: NextRequest) {
               )
             }
 
+            // Test if URL is accessible (HEAD request)
+            try {
+              console.log('🔍 Testing audio URL accessibility:', audioAsset.src)
+              const urlTest = await fetch(audioAsset.src, { method: 'HEAD' })
+              if (!urlTest.ok) {
+                return NextResponse.json(
+                  {
+                    ok: false,
+                    error: `Audio URL is not accessible (${urlTest.status}): ${audioAsset.src}`
+                  },
+                  { status: 400 }
+                )
+              }
+              console.log('✅ Audio URL is accessible')
+            } catch (fetchError) {
+              return NextResponse.json(
+                {
+                  ok: false,
+                  error: `Cannot access audio URL: ${audioAsset.src}`,
+                  details: fetchError instanceof Error ? fetchError.message : 'Unknown error'
+                },
+                { status: 400 }
+              )
+            }
+
             console.log('✅ External audio validation passed:', {
               url: audioAsset.src,
             })
@@ -171,14 +216,31 @@ export async function POST(request: NextRequest) {
       console.error('❌ Shotstack API error:', {
         status: response.status,
         statusText: response.statusText,
-        data
+        responseData: data,
+        requestPayload: body
       })
+
+      // Extract the most detailed error message
+      let detailedError = data.message || 'Shotstack API request failed'
+
+      // Check for validation errors in the response
+      if (data.data && Array.isArray(data.data)) {
+        detailedError = data.data.map((err: { message: string }) => err.message).join(', ')
+      } else if (data.error) {
+        detailedError = data.error
+      }
 
       return NextResponse.json(
         {
           ok: false,
           errorFromShotstack: data,
-          error: data.message || 'Shotstack API request failed'
+          error: detailedError,
+          requestSummary: {
+            trackCount: body.timeline.tracks.length,
+            hasAudio: body.timeline.tracks.some(t =>
+              t.clips.some(c => c.asset.type === 'audio' || c.asset.type === 'text-to-speech')
+            )
+          }
         },
         { status: response.status }
       )

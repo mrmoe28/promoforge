@@ -147,10 +147,23 @@ SHOTSTACK_API_ENV=v1
 - **Solution**: Set `SHOTSTACK_API_ENV=v1` in environment variables
 - **Verification**: Check API logs for correct host URL
 
-### Issue 2: ElevenLabs TTS Scope
+### Issue 2: ElevenLabs TTS Scope ✅ CONFIGURED
 - **Requirement**: ElevenLabs API key must have TTS scope enabled
 - **Check**: Verify API key permissions in ElevenLabs dashboard
 - **Storage**: Ensure upload target (Vercel Blob) is publicly accessible
+
+### Issue 3: Bad Request with Audio (TTS/Music) ✅ FIXED
+- **Problem**: Video generation worked without audio but failed with "Bad Request" when adding voiceover or music
+- **Root Cause**: Incorrect `length` parameter for TTS clips (was numeric, should be `'auto'`)
+- **Solution**:
+  - TTS clips: Use `length: 'auto'` to let Shotstack calculate duration
+  - Voiceover audio: Omit `length` parameter to play full audio
+  - Background music: Keep `length: videoDuration` to trim to video length
+- **Also Fixed**:
+  - Moved `volume` to asset level for cleaner structure
+  - Added URL accessibility validation for external audio
+  - Enhanced error logging for better debugging
+- **See**: [AUDIO_FIX_SUMMARY.md](./AUDIO_FIX_SUMMARY.md) for complete details
 
 ## Testing Protocol
 

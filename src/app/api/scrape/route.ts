@@ -76,20 +76,62 @@ export async function POST(request: NextRequest) {
     const extractScreenshots = (): string[] => {
       const screenshots: string[] = []
 
-      // Extract og:image
+      // Extract og:image first (usually the best quality)
       const ogImage = extractMeta('og:image')
       if (ogImage) {
         screenshots.push(makeAbsoluteUrl(ogImage, url))
       }
 
-      // Extract images from img tags (limit to first 10)
-      const imgRegex = /<img[^>]+src="([^"]+)"/gi
+      // Extract twitter:image as backup
+      const twitterImage = extractMeta('twitter:image')
+      if (twitterImage && !screenshots.includes(twitterImage)) {
+        screenshots.push(makeAbsoluteUrl(twitterImage, url))
+      }
+
+      // Extract images from img tags with better filtering
+      const imgRegex = /<img[^>]+src=["']([^"']+)["'][^>]*>/gi
       let match
       while ((match = imgRegex.exec(html)) !== null && screenshots.length < 10) {
         const imgSrc = match[1]
-        if (imgSrc && !screenshots.includes(imgSrc)) {
-          screenshots.push(makeAbsoluteUrl(imgSrc, url))
+        
+        // Skip common unwanted images
+        if (imgSrc && 
+            !imgSrc.includes('favicon') && 
+            !imgSrc.includes('icon') && 
+            !imgSrc.includes('logo.svg') &&
+            !imgSrc.includes('pixel') &&
+            !imgSrc.includes('tracking') &&
+            !imgSrc.endsWith('.svg') &&
+            imgSrc.length > 10) {
+          
+          const absoluteUrl = makeAbsoluteUrl(imgSrc, url)
+          if (!screenshots.includes(absoluteUrl)) {
+            screenshots.push(absoluteUrl)
+          }
         }
+      }
+
+      // If still no screenshots, try to find any images in the content
+      if (screenshots.length === 0) {
+        const anyImgRegex = /<img[^>]+src=["']([^"']+)["'][^>]*>/gi
+        let anyMatch
+        while ((anyMatch = anyImgRegex.exec(html)) !== null && screenshots.length < 5) {
+          const imgSrc = anyMatch[1]
+          if (imgSrc) {
+            screenshots.push(makeAbsoluteUrl(imgSrc, url))
+          }
+        }
+      }
+
+      // Add placeholder screenshots if none found
+      if (screenshots.length === 0) {
+        // Generate placeholder screenshots using a service
+        const placeholders = [
+          `https://via.placeholder.com/800x600/4F46E5/FFFFFF?text=Screenshot+1`,
+          `https://via.placeholder.com/800x600/7C3AED/FFFFFF?text=Screenshot+2`,
+          `https://via.placeholder.com/800x600/DC2626/FFFFFF?text=Screenshot+3`
+        ]
+        screenshots.push(...placeholders)
       }
 
       return screenshots.slice(0, 10)

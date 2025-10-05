@@ -1,0 +1,40 @@
+{
+  "testDate": "2025-10-05T19:35:35.205Z",
+  "summary": {
+    "totalErrors": 1,
+    "totalWarnings": 0,
+    "totalNetworkFailures": 0,
+    "totalConsoleMessages": 4
+  },
+  "errors": [
+    {
+      "source": "Console Error",
+      "message": "Failed to load resource: the server responded with a status of 404 (Not Found)",
+      "timestamp": "2025-10-05T19:34:58.214Z"
+    }
+  ],
+  "warnings": [],
+  "networkFailures": [],
+  "consoleMessages": [
+    {
+      "type": "info",
+      "text": "%cDownload the React DevTools for a better development experience: https://react.dev/link/react-devtools font-weight:bold",
+      "timestamp": "2025-10-05T19:34:57.807Z"
+    },
+    {
+      "type": "error",
+      "text": "Failed to load resource: the server responded with a status of 404 (Not Found)",
+      "timestamp": "2025-10-05T19:34:58.214Z"
+    },
+    {
+      "type": "log",
+      "text": "[Fast Refresh] rebuilding",
+      "timestamp": "2025-10-05T19:35:03.295Z"
+    },
+    {
+      "type": "log",
+      "text": "[Fast Refresh] done in 2971ms",
+      "timestamp": "2025-10-05T19:35:06.257Z"
+    }
+  ]
+}
